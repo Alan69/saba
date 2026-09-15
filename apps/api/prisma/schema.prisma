@@ -1,0 +1,461 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  light
+  business
+}
+
+enum CompanyMode {
+  active
+  read_only
+  frozen
+}
+
+enum UserRole {
+  owner
+  admin
+  superadmin
+}
+
+enum EmployeeRole {
+  master
+  admin
+}
+
+enum BoxStatus {
+  active
+  inactive
+}
+
+enum CarSize {
+  S
+  M
+  L
+  XL
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  in_progress
+  done
+  paid
+  cancelled
+  no_show
+}
+
+enum PaymentMethod {
+  cash
+  kaspi
+  card
+}
+
+enum AppointmentSource {
+  admin
+  widget
+  portal
+}
+
+enum SalaryRuleType {
+  percent
+  fixed_shift
+  fixed_month
+  threshold_bonus
+}
+
+enum NpsSource {
+  waba_link
+  browser_popup
+  master_interface
+}
+
+model Company {
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String      @unique
+  businessType  String      @default("carwash") @map("business_type")
+  phone         String?
+  address       String?
+  city          String?
+  timezone      String      @default("Asia/Almaty")
+  language      String      @default("ru")
+  plan          Plan        @default(business)
+  isTrial       Boolean     @default(true) @map("is_trial")
+  planExpiresAt DateTime?   @map("plan_expires_at")
+  mode          CompanyMode @default(active)
+  accentColor   String?     @map("accent_color")
+  workingHours  Json        @map("working_hours")
+  settings      Json        @default("{}")
+  wizardStep    Int         @default(1) @map("wizard_step")
+  wizardDone    Boolean     @default(false) @map("wizard_done")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  deletedAt     DateTime?   @map("deleted_at")
+
+  users         User[]
+  employees     Employee[]
+  boxes         Box[]
+  services      Service[]
+  clients       Client[]
+  appointments  Appointment[]
+  auditLogs     AuditLog[]
+  notifications SystemNotification[]
+  salaryRules   SalaryRule[]
+  accruals      SalaryAccrual[]
+
+  @@map("companies")
+}
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  companyId           String    @map("company_id") @db.Uuid
+  phone               String    @unique
+  passwordHash        String    @map("password_hash")
+  name                String
+  role                UserRole  @default(owner)
+  language            String    @default("ru")
+  onboardingHintsSeen Json      @default("{}") @map("onboarding_hints_seen")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  company       Company        @relation(fields: [companyId], references: [id])
+  refreshTokens RefreshToken[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tokenHash   String    @map("token_hash")
+  fingerprint String?
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Employee {
+  id         String       @id @default(uuid()) @db.Uuid
+  companyId  String       @map("company_id") @db.Uuid
+  name       String
+  phone      String?
+  role       EmployeeRole @default(master)
+  pinHash    String?      @map("pin_hash")
+  active     Boolean      @default(true)
+  avatarUrl  String?      @map("avatar_url")
+  jobTitle   String?      @map("job_title")
+  bio        String?
+  isBookable Boolean      @default(true) @map("is_bookable")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  deletedAt  DateTime?    @map("deleted_at")
+
+  company      Company            @relation(fields: [companyId], references: [id])
+  appointments Appointment[]
+  salaryRules  SalaryRule[]
+  accruals     SalaryAccrual[]
+  npsResponses NpsResponse[]
+  schedules    EmployeeSchedule[]
+  servicePrices EmployeeServicePrice[]
+
+  @@index([companyId])
+  @@map("employees")
+}
+
+model EmployeeServicePrice {
+  id         String   @id @default(uuid()) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  employeeId String   @map("employee_id") @db.Uuid
+  serviceId  String   @map("service_id") @db.Uuid
+  price      Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, serviceId])
+  @@index([companyId, serviceId])
+  @@map("employee_service_prices")
+}
+
+model EmployeeSchedule {
+  id         String  @id @default(uuid()) @db.Uuid
+  companyId  String  @map("company_id") @db.Uuid
+  employeeId String  @map("employee_id") @db.Uuid
+  weekday    String // mon, tue, wed, thu, fri, sat, sun
+  enabled    Boolean @default(true)
+  start      String // HH:MM
+  end        String // HH:MM
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, weekday])
+  @@index([companyId, employeeId])
+  @@map("employee_schedules")
+}
+
+model Box {
+  id        String    @id @default(uuid()) @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  name      String
+  color     String?
+  sortOrder Int       @default(0) @map("sort_order")
+  status    BoxStatus @default(active)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  appointments Appointment[]
+
+  @@index([companyId])
+  @@map("boxes")
+}
+
+model Service {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  name        String
+  category    String?
+  durationMin Int       @map("duration_min")
+  price       Decimal   @db.Decimal(10, 2)
+  priceBySize Json?     @map("price_by_size")
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  company             Company                @relation(fields: [companyId], references: [id])
+  appointments        Appointment[]
+  employeePrices      EmployeeServicePrice[]
+  appointmentServices AppointmentService[]
+
+  @@index([companyId])
+  @@map("services")
+}
+
+model Client {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  phone       String
+  name        String?
+  email       String?
+  waConsent   Boolean   @default(false) @map("wa_consent")
+  waOptOut    Boolean   @default(false) @map("wa_opt_out")
+  visitsCount Int       @default(0) @map("visits_count")
+  totalSpent  Decimal   @default(0) @map("total_spent") @db.Decimal(12, 2)
+  lastVisitAt DateTime? @map("last_visit_at")
+  rfmSegment  String?   @map("rfm_segment")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  cars         ClientCar[]
+  appointments Appointment[]
+  npsResponses NpsResponse[]
+
+  @@unique([companyId, phone])
+  @@index([companyId, phone])
+  @@index([companyId, rfmSegment])
+  @@map("clients")
+}
+
+model ClientCar {
+  id          String    @id @default(uuid()) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  clientId    String    @map("client_id") @db.Uuid
+  brand       String
+  plateNumber String?   @map("plate_number")
+  size        CarSize   @default(M)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  client       Client        @relation(fields: [clientId], references: [id])
+  appointments Appointment[]
+
+  @@index([clientId])
+  @@map("client_cars")
+}
+
+model Appointment {
+  id            String            @id @default(uuid()) @db.Uuid
+  companyId     String            @map("company_id") @db.Uuid
+  boxId         String            @map("box_id") @db.Uuid
+  clientId      String?           @map("client_id") @db.Uuid
+  clientCarId   String?           @map("client_car_id") @db.Uuid
+  employeeId    String?           @map("employee_id") @db.Uuid
+  serviceId     String?           @map("service_id") @db.Uuid
+  code          String            @unique
+  startAt       DateTime          @map("start_at")
+  endAt         DateTime          @map("end_at")
+  status        AppointmentStatus @default(pending)
+  price         Decimal           @db.Decimal(10, 2)
+  originalPrice Decimal           @map("original_price") @db.Decimal(10, 2)
+  paymentMethod PaymentMethod?    @map("payment_method")
+  paidAt        DateTime?         @map("paid_at")
+  cancelReason  String?           @map("cancel_reason")
+  cancelledBy   String?           @map("cancelled_by")
+  source          AppointmentSource @default(admin)
+  comment         String?
+  reminderMinutes Int?              @map("reminder_minutes")
+  reminderSentAt  DateTime?         @map("reminder_sent_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  deletedAt     DateTime?         @map("deleted_at")
+
+  company      Company        @relation(fields: [companyId], references: [id])
+  box          Box            @relation(fields: [boxId], references: [id])
+  client       Client?        @relation(fields: [clientId], references: [id])
+  clientCar    ClientCar?     @relation(fields: [clientCarId], references: [id])
+  employee     Employee?      @relation(fields: [employeeId], references: [id])
+  service      Service?       @relation(fields: [serviceId], references: [id])
+  priceChanges PriceChange[]
+  npsResponses NpsResponse[]
+  accruals     SalaryAccrual[]
+  services     AppointmentService[]
+
+  @@index([companyId, startAt])
+  @@index([employeeId, startAt])
+  @@index([companyId, status, startAt])
+  @@map("appointments")
+}
+
+// Полный список услуг записи (Этап 5). Appointment.serviceId остаётся
+// «основной» услугой для обратной совместимости с админкой и зарплатой.
+model AppointmentService {
+  id            String  @id @default(uuid()) @db.Uuid
+  appointmentId String  @map("appointment_id") @db.Uuid
+  serviceId     String  @map("service_id") @db.Uuid
+  price         Decimal @db.Decimal(10, 2)
+  durationMin   Int     @map("duration_min")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id])
+
+  @@index([appointmentId])
+  @@map("appointment_services")
+}
+
+model PriceChange {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  appointmentId String   @map("appointment_id") @db.Uuid
+  oldPrice      Decimal  @map("old_price") @db.Decimal(10, 2)
+  newPrice      Decimal  @map("new_price") @db.Decimal(10, 2)
+  changedBy     String   @map("changed_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+
+  @@index([companyId])
+  @@map("price_changes")
+}
+
+model SalaryRule {
+  id         String         @id @default(uuid()) @db.Uuid
+  companyId  String         @map("company_id") @db.Uuid
+  employeeId String?        @map("employee_id") @db.Uuid
+  type       SalaryRuleType
+  config     Json
+  sortOrder  Int            @default(0) @map("sort_order")
+  active     Boolean        @default(true)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  deletedAt  DateTime?      @map("deleted_at")
+
+  company  Company         @relation(fields: [companyId], references: [id])
+  employee Employee?       @relation(fields: [employeeId], references: [id])
+  accruals SalaryAccrual[]
+
+  @@index([companyId])
+  @@map("salary_rules")
+}
+
+model SalaryAccrual {
+  id            String   @id @default(uuid()) @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  employeeId    String   @map("employee_id") @db.Uuid
+  appointmentId String?  @map("appointment_id") @db.Uuid
+  ruleId        String?  @map("rule_id") @db.Uuid
+  amount        Decimal  @db.Decimal(10, 2)
+  note          String?
+  periodDate    DateTime @map("period_date") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  company     Company      @relation(fields: [companyId], references: [id])
+  employee    Employee     @relation(fields: [employeeId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  rule        SalaryRule?  @relation(fields: [ruleId], references: [id])
+
+  @@index([companyId, employeeId, periodDate])
+  @@map("salary_accruals")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  actorName String   @map("actor_name")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  details   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@map("audit_log")
+}
+
+model SystemNotification {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, isRead, createdAt])
+  @@map("system_notifications")
+}
+
+model NpsResponse {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  appointmentId String    @unique @map("appointment_id") @db.Uuid
+  clientId      String?   @map("client_id") @db.Uuid
+  employeeId    String?   @map("employee_id") @db.Uuid
+  score         Int
+  comment       String?
+  source        NpsSource
+  respondedAt   DateTime  @default(now()) @map("responded_at")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  client      Client?     @relation(fields: [clientId], references: [id])
+  employee    Employee?   @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId, respondedAt])
+  @@map("nps_responses")
+}
