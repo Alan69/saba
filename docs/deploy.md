@@ -1,9 +1,10 @@
 # Деплой Saba
 
-Прод: **http://82.115.49.205** (VPS `saba-prod`, Ubuntu 24.04, выделен под
-проект). Стек целиком в Docker: postgres, redis, api, web. Наружу торчит
-только `web` — nginx внутри контейнера слушает 80 и раздаёт SPA с корня,
-`/api/` проксирует на `api:3001`.
+Прод: **https://sabasmart.app** (VPS `saba-prod` на ps.kz, 82.115.49.205,
+Ubuntu 24.04, выделен под проект). Стек целиком в Docker: postgres, redis,
+api, web, caddy. Наружу смотрит только `caddy` (80/443), он терминирует TLS
+и проксирует на `web`; nginx внутри `web` раздаёт SPA с корня, а `/api/`
+отправляет на `api:3001`.
 
 ## Первый запуск на чистом сервере
 
@@ -45,10 +46,32 @@ cd /opt/saba && docker compose -p saba exec \
 аналитика за 30 дней, сквозной аудит, вход под компанией, сброс пароля
 владельца, soft-delete.
 
-## Чего нет
+## Домен и HTTPS
 
-HTTPS: домена нет, а на голый IP сертификат не выпустить. Появится домен —
-ставим Caddy перед `web`, он сам возьмёт Let's Encrypt.
+Домен `sabasmart.app` куплен через Google Workspace, DNS хостится в
+Squarespace (`nsb1-4.squarespacedns.com`).
+
+Зона `.app` целиком в HSTS-preload-списке браузеров, поэтому HTTP для неё
+не работает в принципе — сертификат обязателен. Caddy берёт и продлевает
+Let's Encrypt сам, ничего настраивать не нужно.
+
+Записи в Squarespace → DNS Settings:
+
+| Тип | Имя | Значение |
+|-----|-----|----------|
+| A | @ | 82.115.49.205 |
+| A | www | 82.115.49.205 |
+
+Пресет «Squarespace Defaults» (4 A-записи на 198.185.159.x / 198.49.23.x и
+CNAME `www` → `ext-sq.squarespace.com`) нужно удалить — он уводит домен на
+Squarespace.
+
+**Не трогать**: `MX → smtp.google.com` и `TXT → v=spf1 include:_spf.google.com ~all`.
+Это почта Google Workspace, снос этих записей её сломает.
+
+В `deploy/Caddyfile` есть временный блок `http://82.115.49.205` — доступ по
+IP на время переезда DNS. После того как домен заработает, его надо
+удалить: по HTTP пароль уходит открытым текстом.
 
 ## Секреты
 
