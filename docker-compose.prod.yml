@@ -43,22 +43,11 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args:
-        VITE_BASE: /saba/
-    container_name: saba-web
     restart: unless-stopped
     depends_on:
       - api
     ports:
-      # локальный доступ для отладки; наружу отдаёт Caddy через сеть qadam
-      - "127.0.0.1:8082:80"
-    networks:
-      - default
-      - qadam
-
-networks:
-  qadam:
-    external: true
+      - "80:80"
 
 volumes:
   pgdata:
