@@ -1,0 +1,31 @@
+# TLS Caddy получает и продлевает сам (Let's Encrypt). Домен .app в HSTS-preload,
+# поэтому HTTP для него не вариант — браузеры ходят только по HTTPS.
+sabasmart.app {
+	encode gzip zstd
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy web:80 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+	}
+	log {
+		output stdout
+		format console
+	}
+}
+
+www.sabasmart.app {
+	redir https://sabasmart.app{uri} permanent
+}
+
+# Временный доступ по IP, пока DNS переезжает на этот сервер.
+# Удалить, когда домен заработает: по HTTP пароль уходит открытым текстом.
+http://82.115.49.205 {
+	encode gzip zstd
+	reverse_proxy web:80
+}
