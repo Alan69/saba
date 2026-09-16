@@ -17,6 +17,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ClientModule } from './client/client.module';
 import { ReminderModule } from './reminder/reminder.module';
 import { AdminModule } from './admin/admin.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminModule } from './admin/admin.module';
     ClientModule,
     ReminderModule,
     AdminModule,
+    WhatsappModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

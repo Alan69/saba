@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -11,6 +12,7 @@ import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS } from '../redis/redis.module';
 import { ClientPrincipal } from './client.guard';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 const PHONE_RE = /^\+?[0-9]{10,15}$/;
 const OTP_TTL_SEC = 600; // код живёт 10 минут
@@ -24,10 +26,13 @@ function normalizePhone(phone: string): string {
 
 @Injectable()
 export class ClientService {
+  private readonly logger = new Logger(ClientService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     @Inject(REDIS) private readonly redis: Redis,
+    private readonly whatsapp: WhatsappService,
   ) {}
 
   private async companyBySlug(slug: string) {
@@ -37,8 +42,10 @@ export class ClientService {
   }
 
   /**
-   * Отправка OTP. WABA в Phase 1 нет — код возвращается в ответе (devCode)
-   * и параллельно его можно отдать через системный WhatsApp-номер Saba в проде.
+   * Отправка OTP через системный WhatsApp-номер Saba. Пока доступы Meta не
+   * заданы, работает dev-стаб: код возвращается прямо в ответе. Как только
+   * WHATSAPP_* появляются в окружении, devCode исчезает из выдачи — иначе
+   * любой мог бы запросить код на чужой номер и прочитать его в ответе.
    */
   async sendOtp(slug: string, phoneRaw: string) {
     const company = await this.companyBySlug(slug);
@@ -53,7 +60,18 @@ export class ClientService {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     await this.redis.set(`otp:${company.id}:${phone}`, code, 'EX', OTP_TTL_SEC);
     await this.redis.set(cdKey, '1', 'EX', OTP_COOLDOWN_SEC);
-    // dev-стаб: без WABA код возвращаем прямо в ответ для демо
+    if (this.whatsapp.isConfigured()) {
+      try {
+        await this.whatsapp.sendOtp(phone, code);
+      } catch (e) {
+        // код лежит в redis, но клиент его не получит — снимаем cooldown под повтор
+        await this.redis.del(cdKey);
+        this.logger.error(`OTP на ${phone} не ушёл: ${(e as Error).message}`);
+        throw new BadRequestException('Не удалось отправить код. Попробуйте ещё раз');
+      }
+      return { sent: true, ttlSec: OTP_TTL_SEC };
+    }
+    // dev-стаб: без доступов Meta код возвращаем прямо в ответ для демо
     return { sent: true, devCode: code, ttlSec: OTP_TTL_SEC };
   }
 

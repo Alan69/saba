@@ -33,6 +33,13 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?set in .env}
       PORT: "3001"
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_TEMPLATE_OTP: ${WHATSAPP_TEMPLATE_OTP:-saba_otp}
+      WHATSAPP_TEMPLATE_REMINDER: ${WHATSAPP_TEMPLATE_REMINDER:-saba_reminder}
+      WHATSAPP_LANG: ${WHATSAPP_LANG:-ru}
     depends_on:
       postgres:
         condition: service_healthy

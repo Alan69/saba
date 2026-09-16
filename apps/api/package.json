@@ -10,7 +10,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "ts-node prisma/seed.ts",
-    "superadmin": "node prisma/create-superadmin.js"
+    "superadmin": "node prisma/create-superadmin.js",
+    "check:whatsapp": "ts-node test/whatsapp.check.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",
