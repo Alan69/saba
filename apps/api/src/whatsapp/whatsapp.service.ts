@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 
-const GRAPH_VERSION = 'v23.0';
+const GRAPH_VERSION = 'v25.0';
 
 export interface TemplateComponent {
   type: 'body' | 'header' | 'button';
