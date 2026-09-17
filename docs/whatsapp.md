@@ -70,3 +70,51 @@ npm run check:whatsapp -w apps/api
 
 Сеть не трогает: проверяет нормализацию номера, подпись вебхука и то, что
 в OTP-payload код попадает дважды.
+
+## Диагностика
+
+Если сообщения не уходят — не гадайте по интерфейсу, спросите Meta напрямую.
+`health_status` перечисляет каждую сущность (номер, WABA, бизнес, приложение)
+с кодом и текстом проблемы:
+
+```bash
+cd /opt/saba && set -a && . ./.env && set +a
+curl -s -H "Authorization: Bearer $WHATSAPP_ACCESS_TOKEN" \
+  "https://graph.facebook.com/v25.0/$WHATSAPP_PHONE_NUMBER_ID?fields=health_status" \
+  | python3 -m json.tool
+```
+
+Коды, которые встречались при подключении:
+
+| Код | Что значит | Что делать |
+|-----|-----------|-----------|
+| `141000` | номер не привязан к WhatsApp-аккаунту | `POST /{phone-number-id}/register` с 6-значным PIN |
+| `141008` | WABA не активен | обычно нет валидного способа оплаты — починить биллинг в WhatsApp Manager |
+| `141010` | бизнес не прошёл верификацию | Business Settings → Security Center, лимит до этого — 250 диалогов в сутки |
+| `2388185` | WABA не даёт создавать шаблоны | следствие `141008` |
+| `138024`, `138025` | SIP для звонков не настроен | к сообщениям отношения не имеет, игнорировать |
+
+## Порядок подключения номера
+
+Верификация кодом из SMS и регистрация в Cloud API — **разные шаги**, и в
+интерфейсе это неочевидно. После SMS номер получает
+`code_verification_status: VERIFIED`, но остаётся в `status: PENDING` и не
+может отправлять. Нужен ещё один вызов:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "https://graph.facebook.com/v25.0/$PHONE_NUMBER_ID/register" \
+  -d '{"messaging_product":"whatsapp","pin":"<6 цифр>"}'
+```
+
+После него `status: CONNECTED`, `platform_type: CLOUD_API`. PIN — это
+двухфакторка номера, хранится вне репозитория; при переносе номера на другой
+сервер он понадобится.
+
+Приложение также надо подписать на события WABA, иначе вебхук не получит
+ничего, даже будучи настроенным:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://graph.facebook.com/v25.0/$WABA_ID/subscribed_apps"
+```
